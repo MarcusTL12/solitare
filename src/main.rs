@@ -1,74 +1,74 @@
-// Number of working slots
-const N: usize = 7;
+use std::fmt::Display;
+
+use crossterm::style::Stylize;
 
 // Card in u8:
-// suit  num
+// suit rank
 // 0000 0000
 //    | Color (0 black, 1 red)
 //
 // Example, ♥ J:
 // 0001 1011
-const CARDS: [u8; 52] = [
-    0b0000_0001,
-    0b0000_0010,
-    0b0000_0011,
-    0b0000_0100,
-    0b0000_0101,
-    0b0000_0110,
-    0b0000_0111,
-    0b0000_1000,
-    0b0000_1001,
-    0b0000_1010,
-    0b0000_1011,
-    0b0000_1100,
-    0b0000_1101,
-    0b0001_0001,
-    0b0001_0010,
-    0b0001_0011,
-    0b0001_0100,
-    0b0001_0101,
-    0b0001_0110,
-    0b0001_0111,
-    0b0001_1000,
-    0b0001_1001,
-    0b0001_1010,
-    0b0001_1011,
-    0b0001_1100,
-    0b0001_1101,
-    0b0010_0001,
-    0b0010_0010,
-    0b0010_0011,
-    0b0010_0100,
-    0b0010_0101,
-    0b0010_0110,
-    0b0010_0111,
-    0b0010_1000,
-    0b0010_1001,
-    0b0010_1010,
-    0b0010_1011,
-    0b0010_1100,
-    0b0010_1101,
-    0b0011_0001,
-    0b0011_0010,
-    0b0011_0011,
-    0b0011_0100,
-    0b0011_0101,
-    0b0011_0110,
-    0b0011_0111,
-    0b0011_1000,
-    0b0011_1001,
-    0b0011_1010,
-    0b0011_1011,
-    0b0011_1100,
-    0b0011_1101,
-];
+struct Card(u8);
 
-fn card_to_ind(card: u8) -> usize {
-    let num = (card & 0b0000_1111) as usize;
-    let suit = ((card & 0b1111_0000) >> 4) as usize;
+impl Card {
+    fn from_index(i: usize) -> Self {
+        let rank = (i % 13 + 1) as u8;
+        let suit = (i / 13) as u8;
 
-    suit * 13 + num
+        Self::from_suit_rank(suit, rank)
+    }
+
+    fn from_suit_rank(suit: u8, rank: u8) -> Self {
+        assert!(suit < 4 && rank <= 13);
+
+        Self((suit << 4) | rank)
+    }
+
+    fn to_ind(&self) -> usize {
+        (self.suit() * 13 + self.rank()) as usize
+    }
+
+    fn rank(&self) -> u8 {
+        self.0 & 0b0000_1111
+    }
+
+    fn suit(&self) -> u8 {
+        self.0 >> 4
+    }
+
+    fn is_red(&self) -> bool {
+        (self.0 >> 4) & 1 == 1
+    }
 }
+
+impl Display for Card {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let rank = self.rank();
+        let rank_offset = if let 1..=11 = rank { rank } else { rank + 1 };
+
+        let suit = self.suit();
+        let suit_offset = [0, 1, 3, 2][suit as usize] << 4;
+
+        let card_char =
+            char::from_u32('🂠' as u32 + suit_offset + rank_offset as u32)
+                .unwrap();
+
+        let colored_card = if self.is_red() {
+            card_char.red()
+        } else {
+            card_char.black()
+        }
+        .on_white();
+
+        write!(f, "{}{}", colored_card, " ".on_white())?;
+
+        Ok(())
+    }
+}
+
+// Number of working slots
+const N: usize = 7;
 
 #[derive(Debug, Clone)]
 struct SolitareState {
@@ -87,7 +87,11 @@ fn shuffle(data: &mut [u8]) {
 }
 
 fn shuffled_deck() -> [u8; 52] {
-    let mut deck = CARDS;
+    let mut deck = [0; 52];
+
+    for (i, x) in deck.iter_mut().enumerate() {
+        *x = Card::from_index(i).0;
+    }
 
     shuffle(&mut deck);
 
@@ -118,15 +122,25 @@ impl SolitareState {
 
         // Counting which are left for remaining deck
         for &card in deck.iter().skip(cur_card) {
-            state.deck |= 1 << card_to_ind(card);
+            state.deck |= 1 << Card(card).to_ind();
         }
 
         state
     }
 }
 
+impl Display for SolitareState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for i in 0..52 {
+            write!(f, "{}", Card::from_index(i))?;
+        }
+
+        Ok(())
+    }
+}
+
 fn main() {
     let state = SolitareState::new();
 
-    println!("{:02x?}", state);
+    println!("{state}");
 }
