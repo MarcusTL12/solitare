@@ -26,7 +26,7 @@ impl Card {
     }
 
     fn to_ind(&self) -> usize {
-        (self.suit() * 13 + self.rank()) as usize
+        (self.suit() * 13 + self.rank() - 1) as usize
     }
 
     fn rank(&self) -> u8 {
@@ -131,8 +131,54 @@ impl SolitareState {
 
 impl Display for SolitareState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for i in 0..52 {
-            write!(f, "{}", Card::from_index(i))?;
+        for suit in 0..4 {
+            if self.targets[suit] == 0 {
+                write!(f, "{}", "🂠 ".dark_grey())?;
+            } else {
+                write!(
+                    f,
+                    "{}",
+                    Card::from_suit_rank(suit as u8, self.targets[suit])
+                )?;
+            }
+        }
+
+        write!(f, " ┃ ")?;
+
+        let mut remaining_deck = self.deck;
+        let mut i: usize = 0;
+
+        while remaining_deck != 0 {
+            let skip = remaining_deck.trailing_zeros() + 1;
+
+            i += skip as usize;
+            remaining_deck >>= skip;
+
+            write!(f, "{}", Card::from_index(i - 1))?;
+        }
+
+        writeln!(f, "\n")?;
+
+        let max_height =
+            self.slots_lens.iter().map(|l| l & 0x0f).max().unwrap();
+
+        for row_ind in 0..max_height {
+            for col_ind in 0..N {
+                let col_len = self.slots_lens[col_ind] & 0x0f;
+                let n_hidden = self.slots_lens[col_ind] >> 4;
+                if row_ind >= col_len {
+                    write!(f, "  ")?;
+                } else if row_ind < n_hidden {
+                    write!(f, "{}", "🂠 ".blue())?;
+                } else {
+                    write!(
+                        f,
+                        "{}",
+                        Card(self.slots[col_ind][row_ind as usize])
+                    )?;
+                }
+            }
+            writeln!(f)?;
         }
 
         Ok(())
