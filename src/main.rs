@@ -17,6 +17,9 @@ use crossterm::{
     },
 };
 
+const TWICE_WIDTH: bool = true;
+const PRINT_PADDING: bool = true;
+
 // Card in u8:
 // suit rank
 // 0000 0000
@@ -83,7 +86,15 @@ impl Card {
             (colored_card.on_white(), " ".on_white())
         };
 
-        write!(f, "{}{}", highlighted_card, pad)?;
+        if TWICE_WIDTH {
+            if PRINT_PADDING {
+                write!(f, "{}{}", highlighted_card, pad)?;
+            } else {
+                write!(f, "{} ", highlighted_card)?;
+            }
+        } else {
+            write!(f, "{}", highlighted_card)?;
+        }
 
         Ok(())
     }
@@ -189,7 +200,10 @@ impl SolitareState {
 
         for suit in 0..4 {
             if self.targets[suit] == 0 {
-                write!(f, "{}", "🂠 ".dark_grey())?;
+                write!(f, "{}", "🂠".dark_grey())?;
+                if TWICE_WIDTH {
+                    write!(f, " ")?;
+                }
             } else {
                 write!(
                     f,
@@ -236,9 +250,15 @@ impl SolitareState {
                 let col_len = self.slots_lens[col_ind] & 0x0f;
                 let n_hidden = self.slots_lens[col_ind] >> 4;
                 if row_ind >= col_len {
-                    write!(f, "  ")?;
+                    write!(f, " ")?;
+                    if TWICE_WIDTH {
+                        write!(f, " ")?;
+                    }
                 } else if row_ind < n_hidden {
-                    write!(f, "{}", "🂠 ".blue())?;
+                    write!(f, "{}", "🂠".blue())?;
+                    if TWICE_WIDTH {
+                        write!(f, " ")?;
+                    }
                 } else {
                     write!(
                         f,
