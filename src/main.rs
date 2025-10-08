@@ -1,6 +1,21 @@
-use std::fmt::Display;
+use std::{
+    fmt::Display,
+    io::{Stdout, stdout},
+};
 
-use crossterm::style::Stylize;
+use crossterm::{
+    cursor,
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode,
+        KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    },
+    execute,
+    style::Stylize,
+    terminal::{
+        self, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+        enable_raw_mode,
+    },
+};
 
 // Card in u8:
 // suit rank
@@ -205,7 +220,7 @@ impl SolitareState {
             write!(f, "{}", Card::from_index(i - 1).highlight(j == hl_ind))?;
         }
 
-        writeln!(f, "\n")?;
+        writeln!(f, "\n\r")?;
 
         let max_height =
             self.slots_lens.iter().map(|l| l & 0x0f).max().unwrap();
@@ -233,10 +248,14 @@ impl SolitareState {
                     )?;
                 }
             }
-            writeln!(f)?;
+            writeln!(f, "\r")?;
         }
 
         Ok(())
+    }
+
+    fn highlight(self, highlight: Highlight) -> HighlightedSolitareState {
+        HighlightedSolitareState(self, highlight)
     }
 }
 
@@ -254,11 +273,72 @@ impl Display for HighlightedSolitareState {
     }
 }
 
+struct GameState {
+    out: Stdout,
+    state: SolitareState,
+    selected: Highlight,
+}
+
+impl GameState {
+    fn new() -> Self {
+        Self {
+            out: stdout(),
+            state: SolitareState::new(),
+            selected: Highlight::NoHighlight,
+        }
+    }
+
+    fn run(&mut self) {
+        enable_raw_mode().unwrap();
+
+        execute!(
+            self.out,
+            EnableMouseCapture,
+            EnterAlternateScreen,
+            cursor::Hide,
+            terminal::Clear(terminal::ClearType::All),
+            cursor::MoveTo(0, 0)
+        )
+        .unwrap();
+
+        println!("{}", self.state);
+
+        while let Ok(x) = event::read() {
+            match x {
+                Event::Key(KeyEvent {
+                    code: KeyCode::Char('q'),
+                    modifiers: KeyModifiers::NONE,
+                    kind: _,
+                    state: _,
+                }) => break,
+
+                Event::Mouse(MouseEvent {
+                    kind: MouseEventKind::Down(MouseButton::Left),
+                    column,
+                    row,
+                    modifiers: KeyModifiers::NONE,
+                }) => {
+                    println!("Row: {row}\n\rCol:{column}\r");
+                }
+
+                _ => {}
+            }
+        }
+
+        execute!(
+            self.out,
+            DisableMouseCapture,
+            cursor::Show,
+            LeaveAlternateScreen
+        )
+        .unwrap();
+
+        disable_raw_mode().unwrap()
+    }
+}
+
 fn main() {
-    let mut state = SolitareState::new();
+    let mut game = GameState::new();
 
-    state.slots_lens[5] &= 0x0f;
-    state.slots_lens[5] |= 2 << 4;
-
-    println!("{}", HighlightedSolitareState(state, Highlight::Slot(5, 3)));
+    game.run();
 }
