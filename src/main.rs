@@ -332,13 +332,40 @@ impl GameState {
                     state: _,
                 }) => break,
 
+                Event::Key(KeyEvent {
+                    code: KeyCode::Esc,
+                    modifiers: KeyModifiers::NONE,
+                    kind: _,
+                    state: _,
+                }) => {
+                    self.selected = Highlight::NoHighlight;
+                    execute!(self.out, cursor::MoveTo(0, 0)).unwrap();
+                    println!("{}", self.state);
+                }
+
                 Event::Mouse(MouseEvent {
                     kind: MouseEventKind::Down(MouseButton::Left),
                     column,
                     row,
                     modifiers: KeyModifiers::NONE,
                 }) => {
-                    println!("Row: {row}\n\rCol:{column}\r");
+                    execute!(self.out, cursor::MoveTo(0, 0)).unwrap();
+
+                    if row >= 2 {
+                        let slot = column / 2;
+                        let row = row - 2;
+
+                        self.selected = Highlight::Slot(slot as u8, row as u8);
+                    } else if column > 10 && row == 0 {
+                        let i = (column - 11) / 2;
+
+                        self.selected = Highlight::Deck(i as u8);
+                    }
+
+                    println!("{}", self.state.highlight(self.selected));
+
+                    println!("Row: {row:3}\n\rCol: {column:3}\r");
+                    execute!(self.out, cursor::MoveUp(2)).unwrap();
                 }
 
                 _ => {}
