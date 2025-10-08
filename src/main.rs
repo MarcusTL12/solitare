@@ -40,10 +40,12 @@ impl Card {
     fn is_red(&self) -> bool {
         (self.0 >> 4) & 1 == 1
     }
-}
 
-impl Display for Card {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn render(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        highlight: bool,
+    ) -> std::fmt::Result {
         let rank = self.rank();
         let rank_offset = if let 1..=11 = rank { rank } else { rank + 1 };
 
@@ -58,19 +60,42 @@ impl Display for Card {
             card_char.red()
         } else {
             card_char.black()
-        }
-        .on_white();
+        };
 
-        write!(f, "{}{}", colored_card, " ".on_white())?;
+        let (highlighted_card, pad) = if highlight {
+            (colored_card.on_dark_green(), " ".on_dark_green())
+        } else {
+            (colored_card.on_white(), " ".on_white())
+        };
+
+        write!(f, "{}{}", highlighted_card, pad)?;
 
         Ok(())
+    }
+
+    fn highlight(self, highlight: bool) -> HighlightedCard {
+        HighlightedCard(self, highlight)
+    }
+}
+
+impl Display for Card {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.render(f, false)
+    }
+}
+
+struct HighlightedCard(Card, bool);
+
+impl Display for HighlightedCard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.render(f, self.1)
     }
 }
 
 // Number of working slots
 const N: usize = 7;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 struct SolitareState {
     deck: u64,            // 1 bit per card, suits ordered: ♠, ♥, ♣, ♦
     targets: [u8; 4],     // Number of "solved" cards for each suit
@@ -96,6 +121,14 @@ fn shuffled_deck() -> [u8; 52] {
     shuffle(&mut deck);
 
     deck
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Highlight {
+    NoHighlight,
+    Target(u8),
+    Deck(u8),
+    Slot(u8, u8),
 }
 
 impl SolitareState {
@@ -127,10 +160,18 @@ impl SolitareState {
 
         state
     }
-}
 
-impl Display for SolitareState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn render(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        highlight: Highlight,
+    ) -> std::fmt::Result {
+        let hl_ind = if let Highlight::Target(i) = highlight {
+            i as usize
+        } else {
+            4 // Out of bounds, will never hit
+        };
+
         for suit in 0..4 {
             if self.targets[suit] == 0 {
                 write!(f, "{}", "🂠 ".dark_grey())?;
@@ -139,6 +180,7 @@ impl Display for SolitareState {
                     f,
                     "{}",
                     Card::from_suit_rank(suit as u8, self.targets[suit])
+                        .highlight(suit == hl_ind),
                 )?;
             }
         }
@@ -148,19 +190,31 @@ impl Display for SolitareState {
         let mut remaining_deck = self.deck;
         let mut i: usize = 0;
 
-        while remaining_deck != 0 {
+        let hl_ind = if let Highlight::Deck(i) = highlight {
+            i as u32
+        } else {
+            52 // Will never hit
+        };
+
+        for j in 0..self.deck.count_ones() {
             let skip = remaining_deck.trailing_zeros() + 1;
 
             i += skip as usize;
             remaining_deck >>= skip;
 
-            write!(f, "{}", Card::from_index(i - 1))?;
+            write!(f, "{}", Card::from_index(i - 1).highlight(j == hl_ind))?;
         }
 
         writeln!(f, "\n")?;
 
         let max_height =
             self.slots_lens.iter().map(|l| l & 0x0f).max().unwrap();
+
+        let (hl_col, hl_row) = if let Highlight::Slot(i, j) = highlight {
+            (i as usize, j)
+        } else {
+            (N + 1, max_height + 1) // Too high, will never hit
+        };
 
         for row_ind in 0..max_height {
             for col_ind in 0..N {
@@ -175,6 +229,7 @@ impl Display for SolitareState {
                         f,
                         "{}",
                         Card(self.slots[col_ind][row_ind as usize])
+                            .highlight(col_ind == hl_col && row_ind >= hl_row)
                     )?;
                 }
             }
@@ -185,8 +240,25 @@ impl Display for SolitareState {
     }
 }
 
-fn main() {
-    let state = SolitareState::new();
+impl Display for SolitareState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.render(f, Highlight::NoHighlight)
+    }
+}
 
-    println!("{state}");
+struct HighlightedSolitareState(SolitareState, Highlight);
+
+impl Display for HighlightedSolitareState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.render(f, self.1)
+    }
+}
+
+fn main() {
+    let mut state = SolitareState::new();
+
+    state.slots_lens[5] &= 0x0f;
+    state.slots_lens[5] |= 2 << 4;
+
+    println!("{}", HighlightedSolitareState(state, Highlight::Slot(5, 3)));
 }
