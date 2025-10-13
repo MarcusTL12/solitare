@@ -124,10 +124,10 @@ const MAX_HEIGHT: usize = N - 1 + 13;
 
 #[derive(Debug, Clone, Copy)]
 struct SolitareState {
-    deck: u64,            // 1 bit per card, suits ordered: ♠, ♥, ♣, ♦
-    targets: [u8; 4],     // Number of "solved" cards for each suit
+    deck: u64,        // 1 bit per card, suits ordered: ♠, ♥, ♣, ♦
+    targets: [u8; 4], // Number of "solved" cards for each suit
     slots: [[u8; MAX_HEIGHT]; N], // Working slots
-    slots_lens: [u8; N],  // Combo: 4 low bits: len, 4 high bits: n hidden
+    slots_lens: [u8; N], // Combo: 4 low bits: len, 4 high bits: n hidden
 }
 
 fn shuffle(data: &mut [u8]) {
@@ -323,14 +323,19 @@ impl GameState {
         }
     }
 
-    fn is_selection_valid(&mut self, selection: Highlight) -> bool {
+    // [src, dst]
+    fn is_selection_valid(&mut self, selection: Highlight) -> [bool; 2] {
         match selection {
-            Highlight::None => false,
+            Highlight::None => [false; 2],
             Highlight::Target(i) => {
-                i < 4 && self.state.targets[i as usize] > 0
+                if i < 4 {
+                    [self.state.targets[i as usize] > 0, true]
+                } else {
+                    [false; 2]
+                }
             }
             Highlight::Deck(i) => {
-                (i as u32) < self.state.deck.count_ones()
+                [(i as u32) < self.state.deck.count_ones(), false]
             }
             Highlight::Slot(col, row) => {
                 if (col as usize) < N {
@@ -338,19 +343,175 @@ impl GameState {
                     let n_cards = slot & 0x0f;
                     let n_hidden = slot >> 4;
 
-                    (n_hidden..n_cards).contains(&row)
+                    [(n_hidden..n_cards).contains(&row), true]
                 } else {
-                    false
+                    [false; 2]
                 }
             }
         }
     }
 
     fn try_move(&mut self, selection: Highlight) {
-        self.selected = Highlight::None;
+        let mut multiple = false;
+
+        let card = match self.selected {
+            Highlight::None => {
+                self.exit_game_mode();
+                panic!("Trying to move without selected card!")
+            }
+            Highlight::Target(suit) => {
+                let rank = self.state.targets[suit as usize];
+
+                Card::from_suit_rank(suit, rank)
+            }
+            Highlight::Deck(i) => {
+                let mut deck = self.state.deck;
+                let mut card_ind = 0;
+
+                for _ in 0..=i {
+                    let skip = deck.trailing_zeros() + 1;
+                    deck >>= skip;
+                    card_ind += skip;
+                }
+
+                card_ind -= 1;
+
+                Card::from_index(card_ind as usize)
+            }
+            Highlight::Slot(col, row) => {
+                let slot_height = self.state.slots_lens[col as usize] & 0x0f;
+
+                if row + 1 < slot_height {
+                    multiple = true;
+                }
+
+                Card(self.state.slots[col as usize][row as usize])
+            }
+        };
+
+        println!("\n\nTrying to move: {}", card);
+
+        match selection {
+            Highlight::None => {
+                self.exit_game_mode();
+                panic!("Trying to move without selected destination!")
+            }
+            Highlight::Target(_) => {
+                let suit = card.suit();
+                if card.rank() != self.state.targets[suit as usize] + 1
+                    || multiple
+                {
+                    self.selected = selection;
+                } else {
+                    self.state.targets[suit as usize] += 1;
+
+                    match self.selected {
+                        Highlight::None => unreachable!(),
+                        Highlight::Target(_) => unreachable!(),
+                        Highlight::Deck(_) => {
+                            self.state.deck &= !(1 << card.to_ind())
+                        }
+                        Highlight::Slot(col, _) => {
+                            let slot = &mut self.state.slots_lens[col as usize];
+                            let n_cards = (*slot & 0x0f) - 1;
+                            let mut n_hidden = *slot >> 4;
+
+                            if n_hidden > 0 && n_hidden == n_cards {
+                                n_hidden -= 1;
+                            }
+
+                            *slot = (n_hidden << 4) | n_cards;
+                        }
+                    }
+
+                    self.selected = Highlight::None;
+                }
+            }
+            Highlight::Deck(_) => self.selected = selection,
+            Highlight::Slot(col, _) => {
+                let slot = self.state.slots_lens[col as usize];
+                let slot_len = slot & 0x0f;
+                let slot_hidden = slot >> 4;
+
+                // First check for legality of move:
+                let legal = if slot_len == 0 {
+                    card.rank() == 13
+                } else {
+                    let target_card = Card(
+                        self.state.slots[col as usize][slot_len as usize - 1],
+                    );
+
+                    (card.rank() + 1 == target_card.rank())
+                        && (card.is_red() ^ target_card.is_red())
+                };
+
+                if legal {
+                    // Then performing the move
+
+                    if !multiple {
+                        self.state.slots[col as usize][slot_len as usize] =
+                            card.0;
+                        self.state.slots_lens[col as usize] =
+                            (slot_hidden << 4) | (slot_len + 1);
+                    }
+
+                    match self.selected {
+                        Highlight::None => unreachable!(),
+                        Highlight::Target(suit) => {
+                            self.state.targets[suit as usize] -= 1
+                        }
+                        Highlight::Deck(_) => {
+                            self.state.deck &= !(1 << card.to_ind())
+                        }
+                        Highlight::Slot(from_col, row) => {
+                            let slot =
+                                &mut self.state.slots_lens[from_col as usize];
+                            if !multiple {
+                                let n_cards = (*slot & 0x0f) - 1;
+                                let mut n_hidden = *slot >> 4;
+
+                                if n_hidden > 0 && n_hidden == n_cards {
+                                    n_hidden -= 1;
+                                }
+
+                                *slot = (n_hidden << 4) | n_cards;
+                            } else {
+                                // This does not work yet
+
+                                let n_cards = *slot & 0x0f;
+                                let n_moved = n_cards - row;
+                                let new_n_cards = n_cards - n_moved;
+
+                                let mut n_hidden = *slot >> 4;
+
+                                if n_hidden > 0 && n_hidden == new_n_cards {
+                                    n_hidden -= 1;
+                                }
+
+                                *slot = (n_hidden << 4) | n_cards;
+
+                                for i in 0..n_cards {
+                                    self.state.slots[col as usize]
+                                        [(slot_len + i) as usize] =
+                                        self.state.slots[from_col as usize]
+                                            [(row + i) as usize]
+                                }
+
+                                let new_to_slot_len = slot_len + n_cards;
+
+                                self.state.slots_lens[col as usize] =
+                                    (slot_hidden << 4) | (new_to_slot_len + 1);
+                            }
+                        }
+                    }
+                } else {
+                    self.selected = selection;
+                }
+            }
+        }
     }
 
-    fn run(&mut self) {
+    fn enter_game_mode(&mut self) {
         enable_raw_mode().unwrap();
 
         execute!(
@@ -362,6 +523,22 @@ impl GameState {
             cursor::MoveTo(0, 0)
         )
         .unwrap();
+    }
+
+    fn exit_game_mode(&mut self) {
+        execute!(
+            self.out,
+            DisableMouseCapture,
+            cursor::Show,
+            LeaveAlternateScreen
+        )
+        .unwrap();
+
+        disable_raw_mode().unwrap()
+    }
+
+    fn run(&mut self) {
+        self.enter_game_mode();
 
         println!("{}", self.state);
 
@@ -393,18 +570,32 @@ impl GameState {
                 }) => {
                     let new_selection = Self::coord_to_selection(column, row);
 
-                    if self.is_selection_valid(new_selection) {
-                        if let Highlight::None = self.selected {
-                            self.selected = new_selection;
-                        } else {
-                            self.try_move(new_selection);
+                    let [valid_src, valid_dst] =
+                        self.is_selection_valid(new_selection);
+
+                    match (valid_src, valid_dst, self.selected) {
+                        (false, _, Highlight::None) => {}
+                        (true, _, Highlight::None) => {
+                            self.selected = new_selection
                         }
-                    } else {
-                        self.selected = Highlight::None;
+                        (
+                            _,
+                            true,
+                            Highlight::Target(_)
+                            | Highlight::Deck(_)
+                            | Highlight::Slot(_, _),
+                        ) => self.try_move(new_selection),
+                        (false, _, _) => self.selected = Highlight::None,
+                        (true, _, _) => self.selected = new_selection,
                     }
 
-                    execute!(self.out, cursor::MoveTo(0, 0)).unwrap();
+                    execute!(self.out, cursor::MoveTo(0, 0),).unwrap();
                     println!("{}", self.state.highlight(self.selected));
+                    execute!(
+                        self.out,
+                        terminal::Clear(terminal::ClearType::FromCursorDown)
+                    )
+                    .unwrap();
 
                     println!("Row: {row:3}\n\rCol: {column:3}\r");
                     execute!(self.out, cursor::MoveUp(2)).unwrap();
@@ -414,23 +605,15 @@ impl GameState {
             }
         }
 
-        execute!(
-            self.out,
-            DisableMouseCapture,
-            cursor::Show,
-            LeaveAlternateScreen
-        )
-        .unwrap();
-
-        disable_raw_mode().unwrap()
+        self.exit_game_mode();
     }
 }
 
 fn main() {
     let mut game = GameState::new();
 
-    game.state.targets[2] = 6;
-    game.state.slots_lens[3] &= 0x0f;
+    // game.state.targets[2] = 6;
+    // game.state.slots_lens[3] &= 0x0f;
 
     game.run();
 }
