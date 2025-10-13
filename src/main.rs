@@ -476,8 +476,6 @@ impl GameState {
 
                                 *slot = (n_hidden << 4) | n_cards;
                             } else {
-                                // This does not work yet
-
                                 let n_cards = *slot & 0x0f;
                                 let n_moved = n_cards - row;
                                 let new_n_cards = n_cards - n_moved;
@@ -488,7 +486,7 @@ impl GameState {
                                     n_hidden -= 1;
                                 }
 
-                                *slot = (n_hidden << 4) | n_cards;
+                                *slot = (n_hidden << 4) | new_n_cards;
 
                                 for i in 0..n_cards {
                                     self.state.slots[col as usize]
@@ -497,13 +495,15 @@ impl GameState {
                                             [(row + i) as usize]
                                 }
 
-                                let new_to_slot_len = slot_len + n_cards;
+                                let new_to_slot_len = slot_len + n_moved;
 
                                 self.state.slots_lens[col as usize] =
-                                    (slot_hidden << 4) | (new_to_slot_len + 1);
+                                    (slot_hidden << 4) | new_to_slot_len;
                             }
                         }
                     }
+
+                    self.selected = Highlight::None;
                 } else {
                     self.selected = selection;
                 }
@@ -589,16 +589,16 @@ impl GameState {
                         (true, _, _) => self.selected = new_selection,
                     }
 
-                    execute!(self.out, cursor::MoveTo(0, 0),).unwrap();
-                    println!("{}", self.state.highlight(self.selected));
                     execute!(
                         self.out,
-                        terminal::Clear(terminal::ClearType::FromCursorDown)
+                        cursor::MoveTo(0, 0),
+                        terminal::Clear(terminal::ClearType::All)
                     )
                     .unwrap();
+                    print!("{}", self.state.highlight(self.selected));
 
-                    println!("Row: {row:3}\n\rCol: {column:3}\r");
-                    execute!(self.out, cursor::MoveUp(2)).unwrap();
+                    // println!("Row: {row:3}\n\rCol: {column:3}\r");
+                    // execute!(self.out, cursor::MoveUp(2)).unwrap();
                 }
 
                 _ => {}
