@@ -310,15 +310,17 @@ impl GameState {
     }
 
     fn coord_to_selection(col: u16, row: u16) -> Highlight {
-        match (col, row) {
-            (_, 2..) => {
-                let slot = col / 2;
+        match (col, row, TWICE_WIDTH) {
+            (_, 2.., _) => {
+                let slot = if TWICE_WIDTH { col / 2 } else { col };
                 let row = row - 2;
 
                 Highlight::Slot(slot as u8, row as u8)
             }
-            (..8, 0) => Highlight::Target((col / 2) as u8),
-            (11.., 0) => Highlight::Deck(((col - 11) / 2) as u8),
+            (..8, 0, true) => Highlight::Target((col / 2) as u8),
+            (..4, 0, false) => Highlight::Target(col as u8),
+            (11.., 0, true) => Highlight::Deck(((col - 11) / 2) as u8),
+            (7.., 0, false) => Highlight::Deck((col - 7) as u8),
             _ => Highlight::None,
         }
     }
