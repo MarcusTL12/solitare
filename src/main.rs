@@ -20,6 +20,8 @@ use crossterm::{
     },
 };
 
+pub mod solitare_state;
+
 static TWICE_WIDTH: Lazy<bool> = Lazy::new(|| {
     env::args().any(|x| matches!(x.as_str(), "-tw" | "--twice-width"))
 });
@@ -92,11 +94,6 @@ impl Card {
 
         if *TWICE_WIDTH {
             write!(f, "{}{}", highlighted_card, pad)?;
-            // if PRINT_PADDING {
-            //     write!(f, "{}{}", highlighted_card, pad)?;
-            // } else {
-            //     write!(f, "{} ", highlighted_card)?;
-            // }
         } else {
             write!(f, "{}", highlighted_card)?;
         }
