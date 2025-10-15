@@ -1,7 +1,10 @@
 use std::{
+    env,
     fmt::Display,
     io::{Stdout, stdout},
 };
+
+use once_cell::sync::Lazy;
 
 use crossterm::{
     cursor,
@@ -17,8 +20,9 @@ use crossterm::{
     },
 };
 
-const TWICE_WIDTH: bool = true;
-const PRINT_PADDING: bool = true;
+static TWICE_WIDTH: Lazy<bool> = Lazy::new(|| {
+    env::args().any(|x| matches!(x.as_str(), "-tw" | "--twice-width"))
+});
 
 // Card in u8:
 // suit rank
@@ -86,12 +90,13 @@ impl Card {
             (colored_card.on_white(), " ".on_white())
         };
 
-        if TWICE_WIDTH {
-            if PRINT_PADDING {
-                write!(f, "{}{}", highlighted_card, pad)?;
-            } else {
-                write!(f, "{} ", highlighted_card)?;
-            }
+        if *TWICE_WIDTH {
+            write!(f, "{}{}", highlighted_card, pad)?;
+            // if PRINT_PADDING {
+            //     write!(f, "{}{}", highlighted_card, pad)?;
+            // } else {
+            //     write!(f, "{} ", highlighted_card)?;
+            // }
         } else {
             write!(f, "{}", highlighted_card)?;
         }
@@ -202,7 +207,7 @@ impl SolitareState {
         for suit in 0..4 {
             if self.targets[suit] == 0 {
                 write!(f, "{}", "🂠".dark_grey())?;
-                if TWICE_WIDTH {
+                if *TWICE_WIDTH {
                     write!(f, " ")?;
                 }
             } else {
@@ -252,12 +257,12 @@ impl SolitareState {
                 let n_hidden = self.slots_lens[col_ind] >> 4;
                 if row_ind >= col_len {
                     write!(f, " ")?;
-                    if TWICE_WIDTH {
+                    if *TWICE_WIDTH {
                         write!(f, " ")?;
                     }
                 } else if row_ind < n_hidden {
                     write!(f, "{}", "🂠".blue())?;
-                    if TWICE_WIDTH {
+                    if *TWICE_WIDTH {
                         write!(f, " ")?;
                     }
                 } else {
@@ -310,9 +315,9 @@ impl GameState {
     }
 
     fn coord_to_selection(col: u16, row: u16) -> Highlight {
-        match (col, row, TWICE_WIDTH) {
+        match (col, row, *TWICE_WIDTH) {
             (_, 2.., _) => {
-                let slot = if TWICE_WIDTH { col / 2 } else { col };
+                let slot = if *TWICE_WIDTH { col / 2 } else { col };
                 let row = row - 2;
 
                 Highlight::Slot(slot as u8, row as u8)

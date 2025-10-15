@@ -6,4 +6,4 @@ edition = "2024"
 [dependencies]
 crossterm = "0.29"
 rand = "0.9"
-arrayvec = "0.7"
+once_cell = "1.21"
